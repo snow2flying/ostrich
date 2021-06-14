@@ -1,0 +1,55 @@
+use std::fmt;
+use std::net::SocketAddr;
+
+pub mod trojan;
+
+impl fmt::Display for MaybeSocketAddr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MaybeSocketAddr::SocketAddr(addr) => write!(f, "{}", addr),
+            MaybeSocketAddr::HostAndPort(host, port) => write!(f, "{}:{}", host, port),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum MaybeSocketAddr {
+    SocketAddr(SocketAddr),
+    HostAndPort(String, u16),
+}
+
+impl From<SocketAddr> for MaybeSocketAddr {
+    fn from(addr: SocketAddr) -> Self {
+        MaybeSocketAddr::SocketAddr(addr)
+    }
+}
+
+impl From<(String, u16)> for MaybeSocketAddr {
+    fn from(domain_and_port: (String, u16)) -> Self {
+        MaybeSocketAddr::HostAndPort(domain_and_port.0, domain_and_port.1)
+    }
+}
+#[macro_export]
+macro_rules! bad_request {
+    ($s:ident) => {
+        $s.write_all(b"HTTP/1.1 400 bad request\r\nconnection: closed\r\n\r\nbad request")
+            .await?;
+        $s.flush().await?;
+        $s.close().await?;
+    };
+}
+
+pub async fn try_resolve(addr: &MaybeSocketAddr) -> SocketAddr {
+    match addr {
+        MaybeSocketAddr::SocketAddr(ref addr) => *addr,
+        MaybeSocketAddr::HostAndPort(host, port) => {
+            crate::trojan::resolver::resolve(host.clone(), *port)
+                .await
+                .unwrap()
+            // .or(trust_dns_resolver::error::ResolveError::from(format!(
+            //         "no addresses returned ,host: {}",
+            //         host
+            //     )))
+        }
+    }
+}
