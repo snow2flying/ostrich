@@ -1,16 +1,13 @@
-use std::sync::Arc;
-
-use event_listener::Event;
 use futures_util::io::{AsyncReadExt, WriteHalf};
 use futures_util::stream::StreamExt;
 use log::debug;
 use log::error;
 use log::info;
+use std::sync::Arc;
 
 use async_std::net::TcpStream;
 use async_tls::server::TlsStream;
 use async_tls::TlsAcceptor;
-type TerminateEvent = Arc<Event>;
 
 use crate::authenticator::{Authenticator, NullAuthenticator};
 use network::trojan::header::{Decoder, TrojanDecoder};
@@ -195,7 +192,6 @@ async fn proxy(
 ) -> Result<()> {
     use crate::copy::copy;
     use bytes::{Buf, BytesMut};
-    use fluvio_future::task::spawn;
     // use futures_util::FutureExt;
     // use network::MaybeSocketAddr;
     let mut buf1 = vec![0u8; 65536];

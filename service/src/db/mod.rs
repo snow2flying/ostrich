@@ -29,23 +29,6 @@ pub trait Db {
     async fn conn(&self) -> Result<Self::Conn>;
 }
 
-/// Create a batch insert statement
-///
-/// This incantation borrowed from @mehcode
-/// https://discordapp.com/channels/665528275556106240/665528275556106243/694835667401703444
-fn build_batch_insert(rows: usize, columns: usize) -> String {
-    use itertools::Itertools;
-
-    (0..rows)
-        .format_with(",", |i, f| {
-            f(&format_args!(
-                "({})",
-                (1..=columns).format_with(",", |j, f| f(&format_args!("${}", j + (i * columns))))
-            ))
-        })
-        .to_string()
-}
-
 pub async fn create_db(uri: &str) -> anyhow::Result<()> {
     if !Any::database_exists(uri).await? {
         Any::create_database(uri).await?;

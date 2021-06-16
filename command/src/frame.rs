@@ -1,6 +1,6 @@
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use crc::{Crc, CRC_64_ECMA_182, CRC_8_ROHC};
+use crc::{Crc, CRC_64_ECMA_182};
 
 const CRC: Crc<u64> = Crc::<u64>::new(&CRC_64_ECMA_182);
 pub enum Frame {

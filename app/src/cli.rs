@@ -1,22 +1,23 @@
+#[warn(unused_must_use)]
 use async_std::future::timeout;
 use async_std::net::UdpSocket;
 use async_std::task;
 use bytes::BytesMut;
 use clap::{crate_version, FromArgMatches, IntoApp};
-
 use comfy_table::Table;
 use command::frame::Frame;
 use command::{build_cmd, opt::Opt};
+use errors::{Error, Result};
 use service::register::handler::{ResponseBody, ResponseEntity};
 use std::time::Duration;
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<()> {
     let matches = Opt::into_app().version(crate_version!()).get_matches();
 
     task::block_on(async {
         let socket = UdpSocket::bind("127.0.0.1:0").await?;
         let mut data = BytesMut::default();
-        build_cmd(Opt::from_arg_matches(&matches), &mut data).await;
+        build_cmd(Opt::from_arg_matches(&matches), &mut data).await?;
         // let test = String::from_utf8(data.to_vec()).unwrap();
         // Frame::unpack_msg_frame( &mut data).unwrap();
         //
@@ -31,7 +32,8 @@ fn main() -> std::io::Result<()> {
             Duration::from_secs(60),
             socket.send_to(data.as_ref(), "127.0.0.1:12771"),
         )
-        .await;
+        .await
+        .map_err(|e| Error::Eor(anyhow::anyhow!("{}", e)))?;
         //
         let mut buf = vec![0u8; 10240];
         let (n, _) = timeout(Duration::from_secs(60), socket.recv_from(&mut buf))

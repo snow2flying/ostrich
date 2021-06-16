@@ -16,9 +16,9 @@ pub mod hyper_compat {
         sync::Semaphore,
         Local, Task,
     };
-    use hyper::{server::conn::Http, Body, Request, Response};
+    use hyper::server::conn::Http;
     use sqlx::pool::PoolConnection;
-    use sqlx::{Pool, Sqlite};
+    use sqlx::Sqlite;
     use std::sync::Arc;
     use std::{io, rc::Rc};
 

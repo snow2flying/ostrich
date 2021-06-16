@@ -1,30 +1,19 @@
-use std::default::Default;
-
-use chrono::{Duration, Utc};
-use log::*;
-use rand::{thread_rng, RngCore};
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_repr::*;
-use sqlx::pool::PoolConnection;
-use sqlx::{Connection, Sqlite};
-
 use crate::api::state::{Node, State};
-use crate::db;
 use crate::db::model::{EntityId, ProvideAuthn, UserEntity};
 use crate::db::Db;
-use anyhow::Context;
-use bytes::{buf::ext::BufExt, Buf};
-use hyper::{header, http, Body, Request, Response, StatusCode};
-use log::{info, warn};
-use std::collections::HashMap;
+use bytes::buf::ext::BufExt;
+use hyper::{Body, Request};
+use log::info;
+use serde::{Deserialize, Serialize};
+use serde_repr::*;
+use sqlx::pool::PoolConnection;
+use sqlx::Sqlite;
+use std::default::Default;
 use std::ops::Sub;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use thiserror::Error;
 
 use crate::register::handler::{ResponseEntity, ServerAddr, ServerNode};
 use errors::{Error, Result, ServiceError};
-use uuid::Uuid;
 
 pub const USER_TOKEN_MAX_LEN: usize = 1024;
 pub const NODE_EXPIRE: i64 = 210; // 3`30``
@@ -35,12 +24,12 @@ pub struct User {
     pub role: EntityId,
 }
 
-impl User {
-    fn token(mut self, token: String) -> Self {
-        self.token = token;
-        self
-    }
-}
+// impl User {
+//     fn token(mut self, token: String) -> Self {
+//         self.token = token;
+//         self
+//     }
+// }
 
 #[derive(Serialize_repr, Deserialize_repr, Debug)]
 #[repr(u8)]
@@ -126,7 +115,7 @@ where
     let body = hyper::body::aggregate(req).await?;
     // Decode as JSON...
     let body: Node =
-        serde_json::from_reader(body.reader()).map_err(|e| ServiceError::InvalidParams)?;
+        serde_json::from_reader(body.reader()).map_err(|_| ServiceError::InvalidParams)?;
     info!("received node: {:?}", body);
     let addr = body.addr;
     let now = chrono::Utc::now().timestamp();
@@ -194,10 +183,10 @@ where
             let whole_body = hyper::body::aggregate(req).await?;
             // Decode as JSON...
             let body: RequestBody = serde_json::from_reader(whole_body.reader())
-                .map_err(|e| ServiceError::InvalidParams)?;
+                .map_err(|_| ServiceError::InvalidParams)?;
             // Change the JSON...
             info!("body {:?}", body);
-            ///     let u = User::deserialize(&mut de)?;
+
             // let body: RequestBody = serde_json::from_slice(j)?;
             db.get_user_by_token(body.user_id.as_ref())
                 .await
@@ -241,7 +230,7 @@ where
     let whole_body = hyper::body::aggregate(req).await?;
     // Decode as JSON...
     let body: RequestBody =
-        serde_json::from_reader(whole_body.reader()).map_err(|e| ServiceError::InvalidParams)?;
+        serde_json::from_reader(whole_body.reader()).map_err(|_| ServiceError::InvalidParams)?;
 
     let creator = db
         .get_user_by_token(body.admin.as_ref())
@@ -267,7 +256,7 @@ where
 
     db.create_user(token.clone(), role as i32)
         .await
-        .map_err(|e| ServiceError::TokenOccupied)?;
+        .map_err(|_| ServiceError::TokenOccupied)?;
 
     let new = ResponseEntity::User(User { token, role });
 

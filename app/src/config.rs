@@ -11,15 +11,15 @@ pub use self::ssl::Config as SslConfig;
 pub static mut CONFIG: MaybeUninit<Config> = MaybeUninit::uninit();
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe fn set_config<P: AsRef<Path>>(path: P) -> Result<()> {
+pub  fn set_config<P: AsRef<Path>>(path: P) -> Result<Config> {
     let mut file = File::open(path)?;
-    let json = &mut String::new();
-    file.read_to_string(json)?;
+    // let json = &mut String::new();
+    // file.read_to_string(json)?;
 
-    let config = serde_json::from_str::<Config>(json).unwrap();
-    CONFIG.write(config);
+    let config: Config = serde_json::from_reader(file).unwrap();
+    // CONFIG.write(config);
 
-    Ok(())
+    Ok(config)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -29,17 +29,11 @@ pub struct Config {
     pub local_port: u16,
     pub remote_addr: String,
     pub remote_port: u16,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_addr: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_port: Option<u16>,
     pub password: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub udp_timeout: Option<u32>,
     pub log_level: u8,
     pub ssl: SslConfig,
     pub tcp: TcpConfig,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // #[serde(skip_serializing_if = "Option::is_none")]
     pub mysql: Option<MysqlConfig>,
 }
 
@@ -105,8 +99,8 @@ mod ssl {
         pub dhparam: String,
     }
 
-    #[serde(untagged)]
     #[derive(Debug, Deserialize, Serialize)]
+    #[serde(untagged)]
     pub enum Config {
         Client(Client),
         Server(Server),

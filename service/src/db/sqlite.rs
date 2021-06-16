@@ -1,16 +1,11 @@
-use std::convert::TryFrom;
-
 use crate::db::model::*;
 use crate::db::Db;
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
 use errors::{Result, ServiceError};
-use sqlx::error::DatabaseError;
 use sqlx::pool::PoolConnection;
-use sqlx::sqlite::SqliteError;
-use sqlx::{Error as SqlxError, Pool, Sqlite};
-use sqlx::{FromRow, SqliteConnection, SqlitePool};
+use sqlx::SqlitePool;
+use sqlx::{Pool, Sqlite};
 use uuid::Uuid;
 
 // impl TryFrom<&SqliteError> for ProvideErrorKind {

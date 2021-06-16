@@ -6,16 +6,16 @@ use crate::db::Db;
 
 use errors::{Error, Result, ServiceError};
 use hyper::{header, Body, Method, Request, Response, StatusCode};
-use log::{info, warn};
-use serde::{Deserialize, Deserializer, Serialize};
+use log::warn;
+use serde::{Deserialize, Serialize};
 use serde_repr::*;
 use sqlx::pool::PoolConnection;
-use sqlx::{Pool, Sqlite};
+use sqlx::Sqlite;
 use std::sync::Arc;
 
-static INTERNAL_SERVER_ERROR: &[u8] = b"Internal Server Error";
+// static INTERNAL_SERVER_ERROR: &[u8] = b"Internal Server Error";
 static NOTFOUND: &[u8] = b"Not Found";
-static POST_DATA: &str = r#"{"original": "data"}"#;
+// static POST_DATA: &str = r#"{"original": "data"}"#;
 
 #[derive(Serialize, Deserialize)]
 pub struct ServerAddr {
@@ -126,7 +126,7 @@ fn build_response(r: Result<ResponseEntity>) -> Result<Response<Body>> {
             resp
         }
     };
-    let body = serde_json::to_vec(&content).map_err(|e| ServiceError::InternalError)?;
+    let body = serde_json::to_vec(&content).map_err(|_| ServiceError::InternalError)?;
 
     let resp = Response::builder()
         .status(StatusCode::OK)

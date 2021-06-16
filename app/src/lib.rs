@@ -14,13 +14,12 @@ pub use proxy::*;
 use bytes::BytesMut;
 use command::frame::Frame;
 use errors::{Error, Result, ServiceError};
-use futures::Future;
 use serde::{Deserialize, Serialize};
 use service::api::users::{User, USER_TOKEN_MAX_LEN};
 use service::db::model::{EntityId, ProvideAuthn};
 use service::register::handler::{ResponseBody, ResponseEntity, Role};
 use sqlx::pool::PoolConnection;
-use sqlx::{Sqlite, SqliteConnection};
+use sqlx::Sqlite;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Address {
@@ -49,7 +48,7 @@ pub async fn create_cmd_user(
 
     db.create_user(token.clone(), role as i32)
         .await
-        .map_err(|e| ServiceError::TokenOccupied)?;
+        .map_err(|_| ServiceError::TokenOccupied)?;
 
     let new = ResponseEntity::User(User { token, role });
 
@@ -94,7 +93,7 @@ pub fn build_cmd_response(ret: Result<ResponseEntity>, data: &mut BytesMut) -> R
             resp
         }
     };
-    let body = serde_json::to_vec(&content).map_err(|e| ServiceError::InternalError)?;
+    let body = serde_json::to_vec(&content).map_err(|_| ServiceError::InternalError)?;
 
     let frame = Frame::CreateUserResponse.pack_msg_frame(body.as_slice());
 
