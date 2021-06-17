@@ -8,17 +8,10 @@ use serde::{Deserialize, Serialize};
 
 pub use self::ssl::Config as SslConfig;
 
-pub static mut CONFIG: MaybeUninit<Config> = MaybeUninit::uninit();
-
 #[allow(clippy::missing_safety_doc)]
-pub  fn set_config<P: AsRef<Path>>(path: P) -> Result<Config> {
-    let mut file = File::open(path)?;
-    // let json = &mut String::new();
-    // file.read_to_string(json)?;
-
+pub fn set_config<P: AsRef<Path>>(path: P) -> Result<Config> {
+    let file = File::open(path)?;
     let config: Config = serde_json::from_reader(file).unwrap();
-    // CONFIG.write(config);
-
     Ok(config)
 }
 

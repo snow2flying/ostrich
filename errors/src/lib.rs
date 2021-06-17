@@ -1,4 +1,4 @@
-#![feature(try_trait)]
+// #![feature(try_trait)]
 
 use thiserror::Error;
 // use trust_dns_resolver::errors::ResolveError;
