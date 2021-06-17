@@ -20,6 +20,7 @@ use service::db::model::{EntityId, ProvideAuthn};
 use service::register::handler::{ResponseBody, ResponseEntity, Role};
 use sqlx::pool::PoolConnection;
 use sqlx::Sqlite;
+pub const DNS_CHCAE_TIMEOUT: u64 = 3 * 60;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Address {

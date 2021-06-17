@@ -1,4 +1,5 @@
 use crate::trojan::header::{Decoder, UdpAssociate, UdpAssociateDecoder};
+use crate::trojan::resolver::Resolver;
 use crate::try_resolve;
 use anyhow::anyhow;
 use async_std::future::timeout;
@@ -17,7 +18,6 @@ use std::collections::HashMap;
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::Arc;
 use std::time::Duration;
-use crate::trojan::resolver::Resolver;
 // use async_std_resolver::AsyncStdResolver;
 
 pub async fn udp_transfer_to_upstream(
@@ -30,7 +30,7 @@ pub async fn udp_transfer_to_upstream(
     let mut upload = 0;
     loop {
         while let Some(frame) = UdpAssociateDecoder.decode(&mut buf)? {
-            let addr = try_resolve(resolver.clone(),&frame.addr).await?;
+            let addr = try_resolve(resolver.clone(), &frame.addr).await?;
             // debug!(
             //     "=====================udp_transfer_to_upstream: {:?}========================",
             //     &frame.addr
@@ -62,7 +62,7 @@ pub async fn udp_transfer_to_upstream(
                 let mut buf2 = BytesMut::with_capacity(n);
                 buf2.extend_from_slice(&buf1[..n]);
                 while let Some(frame) = UdpAssociateDecoder.decode_eof(&mut buf2)? {
-                    let addr = try_resolve(resolver.clone(),&frame.addr).await?;
+                    let addr = try_resolve(resolver.clone(), &frame.addr).await?;
                     upload += outbound.send_to(&frame.payload, addr).await?;
                 }
                 break;
@@ -121,7 +121,7 @@ pub async fn udp_bitransfer(
     let client_to_server = Box::pin(async {
         loop {
             while let Some(frame) = UdpAssociateDecoder.decode(&mut buf)? {
-                let addr = try_resolve(resolver.clone(),&frame.addr).await?;
+                let addr = try_resolve(resolver.clone(), &frame.addr).await?;
                 // debug!(
                 //     "=====================udp_bitransfer: {:?}========================",
                 //     &addr
@@ -158,7 +158,7 @@ pub async fn udp_bitransfer(
                     let mut buf2 = BytesMut::with_capacity(n);
                     buf2.extend_from_slice(&buf1[..n]);
                     while let Some(frame) = UdpAssociateDecoder.decode_eof(&mut buf2)? {
-                        let addr = try_resolve(resolver.clone(),&frame.addr).await?;
+                        let addr = try_resolve(resolver.clone(), &frame.addr).await?;
                         upload += outbound.send_to(&frame.payload, addr).await?;
                     }
                     break;

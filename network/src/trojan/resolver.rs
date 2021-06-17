@@ -1,18 +1,19 @@
-use async_std_resolver::{config, resolver,AsyncStdResolver};
-use errors::{Error,Result};
+use async_std::sync::Mutex;
+use async_std_resolver::{config, resolver, AsyncStdResolver};
+use errors::{Error, Result};
+use log::error;
+use lru_time_cache::LruCache;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use trust_dns_resolver::{IntoName, TryParseIp};
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
-use log::error;
 
-pub struct Resolver{
+// use std::sync::Mutex;
+pub struct Resolver {
     pub dns: AsyncStdResolver,
-    pub cache: Mutex<HashMap<String,SocketAddr>>
+    pub cache: Arc<Mutex<LruCache<String, SocketAddr>>>,
 }
-
-
 
 pub async fn resolve<N: IntoName + Display + TryParseIp + Clone + 'static>(
     resolver: Arc<Resolver>,
@@ -25,8 +26,11 @@ pub async fn resolve<N: IntoName + Display + TryParseIp + Clone + 'static>(
     // )
     // .await?;
     let response = resolver.dns.lookup_ip(host.clone()).await.map_err(|e| {
-        error!("dns bad request with host: {:?}",host.clone().to_string().as_str());
-        anyhow::anyhow!("{:?}",e)
+        error!(
+            "dns bad request with host: {:?}",
+            host.clone().to_string().as_str()
+        );
+        anyhow::anyhow!("{:?}", e)
     })?;
     let address = response
         .iter()

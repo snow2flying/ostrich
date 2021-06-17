@@ -10,22 +10,27 @@ use async_tls::server::TlsStream;
 use async_tls::TlsAcceptor;
 
 use crate::authenticator::{Authenticator, NullAuthenticator};
-use network::trojan::header::{Decoder, TrojanDecoder};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
-use async_std_resolver::{config, resolver};
 use anyhow::anyhow;
 use async_std::net::UdpSocket;
 use async_std::sync::Mutex;
+use async_std_resolver::{config, resolver};
 use errors::{Error, Result};
 use futures::future::Either;
+use futures::future::{self, AbortHandle};
 use futures_util::AsyncWriteExt;
-use glommio::Task;
+use glommio::{Local, Task};
+use lru_time_cache::LruCache;
+use network::trojan::header::{Decoder, TrojanDecoder};
+use network::trojan::resolver::Resolver;
 use network::trojan::udp::{to_ipv6_address, udp_bitransfer, udp_transfer_to_upstream};
 use network::{bad_request, try_resolve};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::io;
-use network::trojan::resolver::Resolver;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
+use std::time::Duration;
+
+use crate::DNS_CHCAE_TIMEOUT;
 
 pub enum Mode {
     Server,
@@ -49,7 +54,9 @@ pub async fn start_with_authenticator(
     i: usize,
     authenticator: Box<dyn Authenticator>,
 ) -> Result<()> {
-    let builder = ProxyBuilder::new(addr, acceptor).await.with_authenticator(authenticator);
+    let builder = ProxyBuilder::new(addr, acceptor)
+        .await
+        .with_authenticator(authenticator);
     builder.start(i).await
 }
 
@@ -59,24 +66,53 @@ pub struct ProxyBuilder {
     // target: String,
     authenticator: Box<dyn Authenticator>,
     // terminate: TerminateEvent,
-    resolver: Arc<Resolver>
+    resolver: Arc<Resolver>,
+    cleanup_abortable: AbortHandle,
+}
+impl Drop for ProxyBuilder {
+    fn drop(&mut self) {
+        self.cleanup_abortable.abort();
+    }
 }
 
 impl ProxyBuilder {
     pub async fn new(addr: SocketAddr, acceptor: TlsAcceptor) -> Self {
-        use  std::sync::Mutex;
+        // use std::sync::Mutex;
         let resolver = resolver(
             config::ResolverConfig::default(),
             config::ResolverOpts::default(),
         )
-            .await.unwrap();
+        .await
+        .unwrap();
+        let cache = Arc::new(Mutex::new(LruCache::with_expiry_duration(
+            Duration::from_secs(DNS_CHCAE_TIMEOUT),
+        )));
+        let cleanup_cache = cache.clone();
+        let (cleanup_task, cleanup_abortable) = future::abortable(async move {
+            loop {
+                async_std::task::sleep(Duration::from_secs(60)).await;
+                println!("dns cache cleanup");
+                let mut cleanup_cache = cleanup_cache.lock().await;
+                // cleanup expired cache. iter() will remove expired elements
+                println!("before cleanup: {}", cleanup_cache.len());
+                let _ = cleanup_cache.iter();
+                println!("after cleanup: {}", cleanup_cache.len());
+            }
+        });
+        async_std::task::spawn(async {
+            cleanup_task.await;
+        });
         Self {
             addr,
             acceptor,
             // target,
             authenticator: Box::new(NullAuthenticator),
             // terminate: Arc::new(Event::new()),
-            resolver: Arc::new(Resolver{ dns: resolver, cache: Mutex::new(HashMap::new()) })
+            resolver: Arc::new(Resolver {
+                dns: resolver,
+                cache: cache.clone(),
+            }),
+            cleanup_abortable,
         }
     }
 
@@ -118,7 +154,7 @@ impl ProxyBuilder {
         let listener = TcpListener::from(listener);
         // let listener = TcpListener::bind(&self.addr).await?;
         info!("worker {} proxy started at: {}", i, self.addr);
-        let shared_authenticator = Arc::new(self.authenticator);
+        // let shared_authenticator = Arc::new(self.authenticator);
         let udp_pairs: Arc<Mutex<HashMap<SocketAddrV6, (WriteHalf<TlsStream<TcpStream>>, u64)>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let udp_socket = Arc::new(
@@ -140,10 +176,10 @@ impl ProxyBuilder {
                         acceptor,
                         stream,
                         // target,
-                        shared_authenticator.clone(),
+                        // shared_authenticator.clone(),
                         udp_pairs.clone(),
                         udp_socket.clone(),
-                        self.resolver.clone()
+                        self.resolver.clone(),
                     ))
                     .detach();
                     // Ok(())
@@ -159,10 +195,10 @@ async fn process_stream(
     acceptor: TlsAcceptor,
     raw_stream: TcpStream,
     // target: String,
-    authenticator: SharedAuthenticator,
+    // authenticator: SharedAuthenticator,
     udp_pairs: Arc<Mutex<HashMap<SocketAddrV6, (WriteHalf<TlsStream<TcpStream>>, u64)>>>,
     udp_socket: Arc<UdpSocket>,
-    resolver: Arc<Resolver>
+    resolver: Arc<Resolver>,
 ) {
     let source = raw_stream
         .peer_addr()
@@ -180,10 +216,10 @@ async fn process_stream(
                 inner_stream,
                 // target,
                 source.clone(),
-                authenticator,
+                // authenticator,
                 udp_pairs,
                 udp_socket,
-                resolver
+                resolver,
             )
             .await
             {
@@ -198,10 +234,10 @@ async fn proxy(
     mut tls_stream: TlsStream<TcpStream>,
     // _target: String,
     source: String,
-    authenticator: SharedAuthenticator,
+    // authenticator: SharedAuthenticator,
     udp_pairs: Arc<Mutex<HashMap<SocketAddrV6, (WriteHalf<TlsStream<TcpStream>>, u64)>>>,
     udp_socket: Arc<UdpSocket>,
-    resolver: Arc<Resolver>
+    resolver: Arc<Resolver>,
 ) -> Result<()> {
     use crate::copy::copy;
     use bytes::{Buf, BytesMut};
@@ -226,7 +262,7 @@ async fn proxy(
             //     break;
             // }
             info!("after decode: {:?}", buf.chunk().len());
-            let target = try_resolve(resolver.clone(),&header.addr).await?;
+            let target = try_resolve(resolver.clone(), &header.addr).await?;
             info!("resolve incoming host: {:?}", &header.addr);
             debug!(
                 "trying to connect to target at: {} from source: {}",
@@ -251,9 +287,16 @@ async fn proxy(
                     }
                 };
                 if let Some(write_half) = cached {
-                    udp_bitransfer(source, read_half, write_half, buf,resolver.clone()).await?
+                    udp_bitransfer(source, read_half, write_half, buf, resolver.clone()).await?
                 } else {
-                    let upload = udp_transfer_to_upstream(read_half, target, udp_socket, buf,resolver.clone()).await;
+                    let upload = udp_transfer_to_upstream(
+                        read_half,
+                        target,
+                        udp_socket,
+                        buf,
+                        resolver.clone(),
+                    )
+                    .await;
                     let mut guard = udp_pairs.lock().await;
                     let addr = to_ipv6_address(&target);
                     let pair = guard.remove(&addr);
@@ -268,13 +311,13 @@ async fn proxy(
             } else {
                 let mut tcp_stream = TcpStream::connect(&target).await?;
 
-                let auth_success = authenticator.authenticate(&tls_stream, &tcp_stream).await?;
-                if !auth_success {
-                    debug!("authentication failed, dropping connection");
-                    return Ok(());
-                } else {
-                    debug!("authentication succeeded");
-                }
+                // let auth_success = authenticator.authenticate(&tls_stream, &tcp_stream).await?;
+                // if !auth_success {
+                //     debug!("authentication failed, dropping connection");
+                //     return Ok(());
+                // } else {
+                //     debug!("authentication succeeded");
+                // }
 
                 debug!("connect to target: {} from source: {}", target, source);
                 if buf.remaining() > 0 {

@@ -18,6 +18,8 @@ fluvio-future = { version = "0.3.0", features = ["fixture", "timer"] }
 #socket2 = "0.3"
 #tonic = { version = "0.4", features = ["tls"] }
 #prost = "0.7"
+
+lru_time_cache = "0.11.11"
 trust-dns-resolver = { version = "0.20" , features = ["dns-over-rustls"] }
 futures = { version = "0.3", default-features = false , features=["std"] }
 futures-lite = "1.11.1"
