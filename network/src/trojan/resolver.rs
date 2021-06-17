@@ -1,24 +1,37 @@
-use async_std_resolver::{config, resolver};
-use errors::Error;
+use async_std_resolver::{config, resolver,AsyncStdResolver};
+use errors::{Error,Result};
 use std::fmt::Display;
 use std::net::SocketAddr;
 use trust_dns_resolver::{IntoName, TryParseIp};
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use log::error;
+
+pub struct Resolver{
+    pub dns: AsyncStdResolver,
+    pub cache: Mutex<HashMap<String,SocketAddr>>
+}
+
+
 
 pub async fn resolve<N: IntoName + Display + TryParseIp + Clone + 'static>(
+    resolver: Arc<Resolver>,
     host: N,
     port: u16,
-) -> Result<SocketAddr, Error> {
-    let resolver = resolver(
-        config::ResolverConfig::default(),
-        config::ResolverOpts::default(),
-    )
-    .await?;
-    let response = resolver.lookup_ip(host).await?;
+) -> Result<Option<SocketAddr>> {
+    // let resolver = resolver(
+    //     config::ResolverConfig::default(),
+    //     config::ResolverOpts::default(),
+    // )
+    // .await?;
+    let response = resolver.dns.lookup_ip(host.clone()).await.map_err(|e| {
+        error!("dns bad request with host: {:?}",host.clone().to_string().as_str());
+        anyhow::anyhow!("{:?}",e)
+    })?;
     let address = response
         .iter()
         .map(move |ip| SocketAddr::new(ip, port))
-        .next()
-        .unwrap();
+        .next();
     // for address in response.iter(){
     //     if address.is_ipv4() {
     //         println!("ipv4: {:?}",address.to_string());

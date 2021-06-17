@@ -301,10 +301,10 @@ CREATE TABLE IF NOT EXISTS users (
                 false => (0, cpus),
             };
 
-            (n..m)
+/*            (n..m)
                 .map(|i| {
                     let tls_acceptor = tls_acceptor.clone();
-                    let proxy = ProxyBuilder::new(local_addr, tls_acceptor.clone());
+                    let proxy = ProxyBuilder::new(local_addr, tls_acceptor.clone()).await;
                     let j = i;
                     let handle = glommio::LocalExecutorBuilder::new()
                         .name(format!("ostrich-proxy-worker-{}", i).as_str())
@@ -316,7 +316,25 @@ CREATE TABLE IF NOT EXISTS users (
                         .unwrap();
                     handles.push(handle);
                 })
-                .collect::<Vec<_>>();
+                .collect::<Vec<_>>();*/
+
+            for i in n..m{
+                let tls_acceptor = tls_acceptor.clone();
+                let proxy = ProxyBuilder::new(local_addr, tls_acceptor.clone()).await;
+                let j = i;
+                let handle = glommio::LocalExecutorBuilder::new()
+                    .name(format!("ostrich-proxy-worker-{}", i).as_str())
+                    .pin_to_cpu(i)
+                    .spawn(move || async move {
+                        info!("Im here: {:?}", j);
+                        proxy.start(j).await;
+                    })
+                    .unwrap();
+                handles.push(handle);
+            }
+
+
+
             info!("handles len {}", handles.len());
             handles.into_iter().for_each(|handle| {
                 handle

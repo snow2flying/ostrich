@@ -17,18 +17,20 @@ use std::collections::HashMap;
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::Arc;
 use std::time::Duration;
+use crate::trojan::resolver::Resolver;
+// use async_std_resolver::AsyncStdResolver;
 
 pub async fn udp_transfer_to_upstream(
     mut inbound: ReadHalf<TlsStream<TcpStream>>,
     addr: SocketAddr,
     outbound: Arc<UdpSocket>,
     mut buf: BytesMut,
-    // resolver: Arc<TokioAsyncResolver>,
+    resolver: Arc<Resolver>,
 ) -> Result<u64> {
     let mut upload = 0;
     loop {
         while let Some(frame) = UdpAssociateDecoder.decode(&mut buf)? {
-            let addr = try_resolve(&frame.addr).await;
+            let addr = try_resolve(resolver.clone(),&frame.addr).await?;
             // debug!(
             //     "=====================udp_transfer_to_upstream: {:?}========================",
             //     &frame.addr
@@ -60,7 +62,7 @@ pub async fn udp_transfer_to_upstream(
                 let mut buf2 = BytesMut::with_capacity(n);
                 buf2.extend_from_slice(&buf1[..n]);
                 while let Some(frame) = UdpAssociateDecoder.decode_eof(&mut buf2)? {
-                    let addr = try_resolve(&frame.addr).await;
+                    let addr = try_resolve(resolver.clone(),&frame.addr).await?;
                     upload += outbound.send_to(&frame.payload, addr).await?;
                 }
                 break;
@@ -105,7 +107,7 @@ pub async fn udp_bitransfer(
     mut ri: ReadHalf<TlsStream<TcpStream>>,
     mut wi: WriteHalf<TlsStream<TcpStream>>,
     mut buf: BytesMut,
-    // resolver: Arc<TokioAsyncResolver>,
+    resolver: Arc<Resolver>,
 ) -> Result<(u64, u64)> {
     let (mut upload, mut download) = (0, 0);
     let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(
@@ -119,7 +121,7 @@ pub async fn udp_bitransfer(
     let client_to_server = Box::pin(async {
         loop {
             while let Some(frame) = UdpAssociateDecoder.decode(&mut buf)? {
-                let addr = try_resolve(&frame.addr).await;
+                let addr = try_resolve(resolver.clone(),&frame.addr).await?;
                 // debug!(
                 //     "=====================udp_bitransfer: {:?}========================",
                 //     &addr
@@ -156,7 +158,7 @@ pub async fn udp_bitransfer(
                     let mut buf2 = BytesMut::with_capacity(n);
                     buf2.extend_from_slice(&buf1[..n]);
                     while let Some(frame) = UdpAssociateDecoder.decode_eof(&mut buf2)? {
-                        let addr = try_resolve(&frame.addr).await;
+                        let addr = try_resolve(resolver.clone(),&frame.addr).await?;
                         upload += outbound.send_to(&frame.payload, addr).await?;
                     }
                     break;

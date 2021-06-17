@@ -1,8 +1,11 @@
 use std::fmt;
 use std::net::SocketAddr;
-
+// use async_std_resolver::AsyncStdResolver;
+use std::sync::Arc;
+use crate::trojan::resolver::Resolver;
+use errors::Result;
 pub mod trojan;
-
+use log::info;
 impl fmt::Display for MaybeSocketAddr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -39,17 +42,28 @@ macro_rules! bad_request {
     };
 }
 
-pub async fn try_resolve(addr: &MaybeSocketAddr) -> SocketAddr {
+pub async fn try_resolve(resolver: Arc<Resolver>,addr: &MaybeSocketAddr) -> Result<SocketAddr> {
     match addr {
-        MaybeSocketAddr::SocketAddr(ref addr) => *addr,
+        MaybeSocketAddr::SocketAddr(ref addr) => Ok(*addr),
         MaybeSocketAddr::HostAndPort(host, port) => {
-            crate::trojan::resolver::resolve(host.clone(), *port)
-                .await
-                .unwrap()
-            // .or(trust_dns_resolver::error::ResolveError::from(format!(
-            //         "no addresses returned ,host: {}",
-            //         host
-            //     )))
+            let mut cache = resolver.cache.lock().unwrap();
+            match cache.get(host) {
+                Some(addr) => {
+                    info!("dns cache matched host: {:?}",host);
+                    Ok(*addr)},
+                None =>   {
+                    let addr = crate::trojan::resolver::resolve(resolver.clone(),host.clone(), *port)
+                        .await?.ok_or(anyhow::anyhow!("can not resolve host: {:?}",host))?;
+                    cache.insert(host.to_owned(),addr);
+                    Ok(addr)
+                }
+                // .or(trust_dns_resolver::error::ResolveError::from(format!(
+                //         "no addresses returned ,host: {}",
+                //         host
+                //     )))
+            }
+
+
         }
     }
 }

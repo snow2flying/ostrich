@@ -12,7 +12,7 @@ use async_tls::TlsAcceptor;
 use crate::authenticator::{Authenticator, NullAuthenticator};
 use network::trojan::header::{Decoder, TrojanDecoder};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
-
+use async_std_resolver::{config, resolver};
 use anyhow::anyhow;
 use async_std::net::UdpSocket;
 use async_std::sync::Mutex;
@@ -25,6 +25,7 @@ use network::{bad_request, try_resolve};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::io;
+use network::trojan::resolver::Resolver;
 
 pub enum Mode {
     Server,
@@ -36,7 +37,7 @@ static UNSPECIFIED: Lazy<SocketAddr> =
     Lazy::new(|| SocketAddr::from(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)));
 /// start TLS proxy at addr to target
 pub async fn start(addr: SocketAddr, acceptor: TlsAcceptor, i: usize) -> Result<()> {
-    let builder = ProxyBuilder::new(addr, acceptor);
+    let builder = ProxyBuilder::new(addr, acceptor).await;
     builder.start(i).await
 }
 
@@ -48,7 +49,7 @@ pub async fn start_with_authenticator(
     i: usize,
     authenticator: Box<dyn Authenticator>,
 ) -> Result<()> {
-    let builder = ProxyBuilder::new(addr, acceptor).with_authenticator(authenticator);
+    let builder = ProxyBuilder::new(addr, acceptor).await.with_authenticator(authenticator);
     builder.start(i).await
 }
 
@@ -58,16 +59,24 @@ pub struct ProxyBuilder {
     // target: String,
     authenticator: Box<dyn Authenticator>,
     // terminate: TerminateEvent,
+    resolver: Arc<Resolver>
 }
 
 impl ProxyBuilder {
-    pub fn new(addr: SocketAddr, acceptor: TlsAcceptor) -> Self {
+    pub async fn new(addr: SocketAddr, acceptor: TlsAcceptor) -> Self {
+        use  std::sync::Mutex;
+        let resolver = resolver(
+            config::ResolverConfig::default(),
+            config::ResolverOpts::default(),
+        )
+            .await.unwrap();
         Self {
             addr,
             acceptor,
             // target,
             authenticator: Box::new(NullAuthenticator),
             // terminate: Arc::new(Event::new()),
+            resolver: Arc::new(Resolver{ dns: resolver, cache: Mutex::new(HashMap::new()) })
         }
     }
 
@@ -134,6 +143,7 @@ impl ProxyBuilder {
                         shared_authenticator.clone(),
                         udp_pairs.clone(),
                         udp_socket.clone(),
+                        self.resolver.clone()
                     ))
                     .detach();
                     // Ok(())
@@ -152,6 +162,7 @@ async fn process_stream(
     authenticator: SharedAuthenticator,
     udp_pairs: Arc<Mutex<HashMap<SocketAddrV6, (WriteHalf<TlsStream<TcpStream>>, u64)>>>,
     udp_socket: Arc<UdpSocket>,
+    resolver: Arc<Resolver>
 ) {
     let source = raw_stream
         .peer_addr()
@@ -172,6 +183,7 @@ async fn process_stream(
                 authenticator,
                 udp_pairs,
                 udp_socket,
+                resolver
             )
             .await
             {
@@ -189,6 +201,7 @@ async fn proxy(
     authenticator: SharedAuthenticator,
     udp_pairs: Arc<Mutex<HashMap<SocketAddrV6, (WriteHalf<TlsStream<TcpStream>>, u64)>>>,
     udp_socket: Arc<UdpSocket>,
+    resolver: Arc<Resolver>
 ) -> Result<()> {
     use crate::copy::copy;
     use bytes::{Buf, BytesMut};
@@ -213,7 +226,7 @@ async fn proxy(
             //     break;
             // }
             info!("after decode: {:?}", buf.chunk().len());
-            let target = try_resolve(&header.addr).await;
+            let target = try_resolve(resolver.clone(),&header.addr).await?;
             info!("resolve incoming host: {:?}", &header.addr);
             debug!(
                 "trying to connect to target at: {} from source: {}",
@@ -238,9 +251,9 @@ async fn proxy(
                     }
                 };
                 if let Some(write_half) = cached {
-                    udp_bitransfer(source, read_half, write_half, buf).await?
+                    udp_bitransfer(source, read_half, write_half, buf,resolver.clone()).await?
                 } else {
-                    let upload = udp_transfer_to_upstream(read_half, target, udp_socket, buf).await;
+                    let upload = udp_transfer_to_upstream(read_half, target, udp_socket, buf,resolver.clone()).await;
                     let mut guard = udp_pairs.lock().await;
                     let addr = to_ipv6_address(&target);
                     let pair = guard.remove(&addr);
