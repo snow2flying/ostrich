@@ -304,7 +304,7 @@ CREATE TABLE IF NOT EXISTS users (
             let report_task = Local::local(async move {
                 loop {
                     // Timer::new(Duration::from_secs(10)).await;
-                    async_std::task::sleep(Duration::from_secs(10)).await;
+                    async_std::task::sleep(Duration::from_secs(3 * 60)).await;
 
                     // std::thread::sleep(Duration::from_secs(5));
 
@@ -367,13 +367,13 @@ CREATE TABLE IF NOT EXISTS users (
             let cleanup_state = state.clone();
             let register_task = Local::local(async move {
                 let socket = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), REGISTER_PORT);
-                serve_register(socket, 1_000, state).await;
+                serve_register(socket, state).await;
             })
             .detach();
 
             let cleanup_task = Local::local(async move {
                 loop {
-                    async_std::task::sleep(Duration::from_secs(60)).await;
+                    async_std::task::sleep(Duration::from_secs(5 * 60)).await;
                     let mut nodes = cleanup_state.server.lock().await;
                     let now = chrono::Utc::now().timestamp();
                     let len = nodes.len();
@@ -527,7 +527,7 @@ CREATE TABLE IF NOT EXISTS users (
                 let cleanup_cache = cache.clone();
                 let (cleanup_task, cleanup_abortable) = futures::future::abortable(async move {
                     loop {
-                        async_std::task::sleep(Duration::from_secs(60)).await;
+                        async_std::task::sleep(Duration::from_secs(5 * 60)).await;
                         println!("dns cache cleanup");
                         let mut cleanup_cache = cleanup_cache.lock().await;
                         // cleanup expired cache. iter() will remove expired elements

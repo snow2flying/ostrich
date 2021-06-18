@@ -67,7 +67,7 @@ pub mod hyper_compat {
     pub async fn serve_register<A, T>(
         addr: A,
         // service: S,
-        max_connections: usize,
+        // max_connections: usize,
         state: Arc<State<T>>,
     ) -> io::Result<()>
     where
@@ -80,7 +80,7 @@ pub mod hyper_compat {
         use futures_lite::StreamExt;
 
         let listener = TcpListener::bind(addr.into())?;
-        let conn_control = Rc::new(Semaphore::new(max_connections as _));
+        // let conn_control = Rc::new(Semaphore::new(max_connections as _));
         // loop {
         let mut incoming = listener.incoming();
         while let Some(Ok(stream)) = incoming.next().await {
@@ -90,15 +90,20 @@ pub mod hyper_compat {
             // Ok(stream) => {
             let addr = stream.local_addr().unwrap();
             let state = state.clone();
-            Local::local(enclose!{(conn_control) async move {
-                        let _permit = conn_control.acquire_permit(1).await;
-                        if let Err(x) = Http::new().with_executor(HyperExecutor).serve_connection(HyperStream(stream), service_fn(|req| {
-
-                            serve(req,state.clone())
-                        })).await {
-                            error!("Stream from {:?} failed with error {:?}", addr, x);
-                        }
-                    }}).detach();
+            Local::local(async move {
+                // let _permit = conn_control.acquire_permit(1).await;
+                if let Err(x) = Http::new()
+                    .with_executor(HyperExecutor)
+                    .serve_connection(
+                        HyperStream(stream),
+                        service_fn(|req| serve(req, state.clone())),
+                    )
+                    .await
+                {
+                    error!("Stream from {:?} failed with error {:?}", addr, x);
+                }
+            })
+            .detach();
             // }
         }
         Ok(())

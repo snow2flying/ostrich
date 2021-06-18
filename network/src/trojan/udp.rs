@@ -31,10 +31,10 @@ pub async fn udp_transfer_to_upstream(
     loop {
         while let Some(frame) = UdpAssociateDecoder.decode(&mut buf)? {
             let addr = try_resolve(resolver.clone(), &frame.addr).await?;
-            // debug!(
-            //     "=====================udp_transfer_to_upstream: {:?}========================",
-            //     &frame.addr
-            // );
+            debug!(
+                "=====================udp_transfer_to_upstream: {:?}========================",
+                &frame.addr
+            );
             upload += outbound.send_to(&frame.payload, addr).await?;
         }
 
@@ -87,13 +87,14 @@ pub async fn udp_transfer_to_downstream(
             let mut is_err = false;
             let mut guard = udp_pairs.lock().await;
             let dst = to_ipv6_address(&dst);
-            if let Some((write_half, download)) = guard.get_mut(&dst) {
+            if let Some((write_half, _download)) = guard.get_mut(&dst) {
                 if let Err(e) = write_half.write_all(&us).await {
                     Error::Eor(anyhow!("udp transfer to downstream error: {}", e));
                     is_err = true;
-                } else {
-                    *download += len as u64;
                 }
+                // else {
+                //     *download += len as u64;
+                // }
             }
             if is_err {
                 guard.remove(&dst);
@@ -126,7 +127,7 @@ pub async fn udp_bitransfer(
                 //     "=====================udp_bitransfer: {:?}========================",
                 //     &addr
                 // );
-                outbound.send_to(&frame.payload, &addr).await.unwrap();
+                outbound.send_to(&frame.payload, &addr).await?;
                 // debug!(
                 //     "=====================udp_bitransfer sent: {:?}========================",
                 //     upload
@@ -149,7 +150,7 @@ pub async fn udp_bitransfer(
             //     break;
             // }
             if let Ok(r) = timeout(Duration::from_secs(60), ri.read(&mut buf1)).await {
-                let n = r.unwrap();
+                let n = r?;
                 // debug!(
                 //     "=====================udp_bitransfer: {:?}========================",
                 //     n
@@ -176,7 +177,7 @@ pub async fn udp_bitransfer(
         loop {
             let (len, dst) = outbound.recv_from(&mut buf).await?;
             if len == 0 {
-                wi.close().await?;
+                // wi.close().await?;
                 break;
             }
             let us: Vec<u8> = UdpAssociate::new(dst, &buf[..len]).into();

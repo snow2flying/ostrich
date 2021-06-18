@@ -267,9 +267,13 @@ async fn proxy(
                         let addr = to_ipv6_address(&target);
                         let mut udp_pairs = udp_pairs.lock().await;
                         if udp_pairs.contains_key(&addr) {
+                            drop(udp_pairs);
+
                             Some(write_half)
                         } else {
                             udp_pairs.insert(addr, (write_half, 0));
+                            drop(udp_pairs);
+
                             None
                         }
                     }
