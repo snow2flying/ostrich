@@ -119,7 +119,7 @@ where
     info!("received node: {:?}", body);
     let addr = body.addr;
     let now = chrono::Utc::now().timestamp();
-    let mut servers = state.server.write().await;
+    let mut servers = state.server.lock().await;
     let node = Node {
         addr: addr.clone(),
         count: body.count,
@@ -164,7 +164,7 @@ where
         user_id: String,
         platform: Platform,
     }
-    let mut nodes = state.server.write().await;
+    let mut nodes = state.server.lock().await;
     let now = chrono::Utc::now().timestamp();
     let len = nodes.len();
 
@@ -175,6 +175,7 @@ where
     for _i in 0..len {
         let node = nodes.pop_front();
         if node.is_none() {
+            drop(nodes);
             return Err(Error::from(ServiceError::InvalidParams));
         }
         let node = node.unwrap();
@@ -202,9 +203,11 @@ where
                 }],
             });
             nodes.push_back(node);
+            drop(nodes);
             return Ok(servers);
         }
     }
+    drop(nodes);
     Err(Error::from(ServiceError::InvalidParams))
 }
 

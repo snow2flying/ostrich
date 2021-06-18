@@ -17,11 +17,11 @@ pub mod hyper_compat {
         Local, Task,
     };
     use hyper::server::conn::Http;
+    use log::error;
     use sqlx::pool::PoolConnection;
     use sqlx::Sqlite;
     use std::sync::Arc;
     use std::{io, rc::Rc};
-
     #[derive(Clone)]
     struct HyperExecutor;
 
@@ -96,7 +96,7 @@ pub mod hyper_compat {
 
                             serve(req,state.clone())
                         })).await {
-                            panic!("Stream from {:?} failed with error {:?}", addr, x);
+                            error!("Stream from {:?} failed with error {:?}", addr, x);
                         }
                     }}).detach();
             // }

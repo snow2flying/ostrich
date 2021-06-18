@@ -40,25 +40,25 @@ pub enum Mode {
 type SharedAuthenticator = Arc<Box<dyn Authenticator>>;
 static UNSPECIFIED: Lazy<SocketAddr> =
     Lazy::new(|| SocketAddr::from(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)));
-/// start TLS proxy at addr to target
-pub async fn start(addr: SocketAddr, acceptor: TlsAcceptor, i: usize) -> Result<()> {
-    let builder = ProxyBuilder::new(addr, acceptor).await;
-    builder.start(i).await
-}
+// /// start TLS proxy at addr to target
+// pub async fn start(addr: SocketAddr, acceptor: TlsAcceptor, i: usize) -> Result<()> {
+//     let builder = ProxyBuilder::new(addr, acceptor).await;
+//     builder.start(i).await
+// }
 
-/// start TLS proxy with authenticator at addr to target
-pub async fn start_with_authenticator(
-    addr: SocketAddr,
-    acceptor: TlsAcceptor,
-    // target: String,
-    i: usize,
-    authenticator: Box<dyn Authenticator>,
-) -> Result<()> {
-    let builder = ProxyBuilder::new(addr, acceptor)
-        .await
-        .with_authenticator(authenticator);
-    builder.start(i).await
-}
+// /// start TLS proxy with authenticator at addr to target
+// pub async fn start_with_authenticator(
+//     addr: SocketAddr,
+//     acceptor: TlsAcceptor,
+//     // target: String,
+//     i: usize,
+//     authenticator: Box<dyn Authenticator>,
+// ) -> Result<()> {
+//     let builder = ProxyBuilder::new(addr, acceptor)
+//         .await
+//         .with_authenticator(authenticator);
+//     builder.start(i).await
+// }
 
 pub struct ProxyBuilder {
     addr: SocketAddr,
@@ -76,7 +76,12 @@ impl Drop for ProxyBuilder {
 }
 
 impl ProxyBuilder {
-    pub async fn new(addr: SocketAddr, acceptor: TlsAcceptor) -> Self {
+    pub async fn new(
+        addr: SocketAddr,
+        acceptor: TlsAcceptor,
+        cleanup_abortable: AbortHandle,
+        cache: Arc<Mutex<LruCache<String, SocketAddr>>>,
+    ) -> Self {
         // use std::sync::Mutex;
         let resolver = resolver(
             config::ResolverConfig::default(),
@@ -84,24 +89,7 @@ impl ProxyBuilder {
         )
         .await
         .unwrap();
-        let cache = Arc::new(Mutex::new(LruCache::with_expiry_duration(
-            Duration::from_secs(DNS_CHCAE_TIMEOUT),
-        )));
-        let cleanup_cache = cache.clone();
-        let (cleanup_task, cleanup_abortable) = future::abortable(async move {
-            loop {
-                async_std::task::sleep(Duration::from_secs(60)).await;
-                println!("dns cache cleanup");
-                let mut cleanup_cache = cleanup_cache.lock().await;
-                // cleanup expired cache. iter() will remove expired elements
-                println!("before cleanup: {}", cleanup_cache.len());
-                let _ = cleanup_cache.iter();
-                println!("after cleanup: {}", cleanup_cache.len());
-            }
-        });
-        async_std::task::spawn(async {
-            cleanup_task.await;
-        });
+
         Self {
             addr,
             acceptor,
@@ -110,7 +98,7 @@ impl ProxyBuilder {
             // terminate: Arc::new(Event::new()),
             resolver: Arc::new(Resolver {
                 dns: resolver,
-                cache: cache.clone(),
+                cache,
             }),
             cleanup_abortable,
         }

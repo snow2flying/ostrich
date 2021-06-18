@@ -162,7 +162,7 @@ pub fn log_init(level: u8) -> Result<()> {
     Ok(())
 }
 // one possible implementation of walking a directory only visiting files
-pub fn cleanup_log(dir: &Path) -> Result<()> {
+pub fn log_cleanup(dir: &Path) -> Result<()> {
     let mut files = HashMap::new();
 
     if dir.is_dir() {

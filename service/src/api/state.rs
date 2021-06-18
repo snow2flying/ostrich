@@ -1,5 +1,5 @@
 use crate::db::Db;
-use async_std::sync::RwLock;
+use async_std::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use sqlx::pool::PoolConnection;
@@ -42,7 +42,7 @@ impl PartialEq for Node {
 
 pub struct State<T> {
     pub(crate) db: T,
-    pub server: RwLock<VecDeque<Node>>,
+    pub server: Mutex<VecDeque<Node>>,
     // pub sq: RwLock<BTreeMap<String, usize>>,
     // pub index: AtomicUsize,
 }
@@ -69,7 +69,7 @@ where
         Self {
             db: state,
             // sq: RwLock::new(BTreeMap::new()),
-            server: RwLock::new(VecDeque::new()),
+            server: Mutex::new(VecDeque::new()),
             // index: AtomicUsize::new(0),
         }
     }
@@ -78,7 +78,7 @@ where
         &self.db
     }
 
-    pub fn server(&self) -> &RwLock<VecDeque<Node>> {
+    pub fn server(&self) -> &Mutex<VecDeque<Node>> {
         &self.server
     }
 }
