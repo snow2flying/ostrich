@@ -17,7 +17,7 @@ use rustls::Session;
 /// Wraps the underlying TCP stream.
 #[derive(Debug)]
 pub struct TlsStream<IO> {
-    pub(crate) io: IO,
+    pub  io: IO,
     pub(crate) session: ServerSession,
     pub(crate) state: TlsState,
 }

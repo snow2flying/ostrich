@@ -13,7 +13,7 @@ use futures::future::Either;
 use futures::io::{ReadHalf, WriteHalf};
 use futures::FutureExt;
 use futures::{AsyncReadExt, AsyncWriteExt};
-use log::{debug, info};
+use log::{debug, info,error};
 use std::collections::HashMap;
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::Arc;
@@ -26,16 +26,32 @@ pub async fn udp_transfer_to_upstream(
     outbound: Arc<UdpSocket>,
     mut buf: BytesMut,
     resolver: Arc<Resolver>,
+    mut tls_socket: TcpStream
 ) -> Result<u64> {
     let mut upload = 0;
-    loop {
+    'upstream: loop {
         while let Some(frame) = UdpAssociateDecoder.decode(&mut buf)? {
             let addr = try_resolve(resolver.clone(), &frame.addr).await?;
             debug!(
                 "=====================udp_transfer_to_upstream: {:?}========================",
                 &frame.addr
             );
-            upload += outbound.send_to(&frame.payload, addr).await?;
+            // upload += outbound.send_to(&frame.payload, addr).await?;
+            match outbound.send_to(&frame.payload, addr).await{
+                Ok(n) =>{
+                    if n == 0{
+                        tls_socket.close().await?;
+                        break 'upstream;
+                    }
+                    upload += n
+                },
+                Err(e) => {
+                    tls_socket.close().await?;
+                    error!("udp send to upstream error: {:?}",e);
+                    break 'upstream;
+
+                }
+            }
         }
 
         let mut buf1 = vec![0u8; 65536];
@@ -53,7 +69,7 @@ pub async fn udp_transfer_to_upstream(
         // }
 
         if let Ok(r) = timeout(Duration::from_secs(60), inbound.read(&mut buf1)).await {
-            let n = r.unwrap();
+            let n = r?;
             // debug!(
             //     "=====================udp_transfer_to_upstream: {:?}========================",
             //     n
@@ -63,7 +79,22 @@ pub async fn udp_transfer_to_upstream(
                 buf2.extend_from_slice(&buf1[..n]);
                 while let Some(frame) = UdpAssociateDecoder.decode_eof(&mut buf2)? {
                     let addr = try_resolve(resolver.clone(), &frame.addr).await?;
-                    upload += outbound.send_to(&frame.payload, addr).await?;
+                    // upload += outbound.send_to(&frame.payload, addr).await?;
+                    match outbound.send_to(&frame.payload, addr).await{
+                        Ok(n) =>{
+                            if n == 0{
+                                tls_socket.close().await?;
+                                break 'upstream;
+                            }
+                            upload += n
+                        },
+                        Err(e) => {
+                            tls_socket.close().await?;
+                            error!("udp send to upstream error: {:?}",e);
+                            break 'upstream;
+
+                        }
+                    }
                 }
                 break;
             }
@@ -109,6 +140,7 @@ pub async fn udp_bitransfer(
     mut wi: WriteHalf<TlsStream<TcpStream>>,
     mut buf: BytesMut,
     resolver: Arc<Resolver>,
+    mut tls_socket: TcpStream,
 ) -> Result<(u64, u64)> {
     let (mut upload, mut download) = (0, 0);
     let outbound = UdpSocket::bind(SocketAddr::from(SocketAddrV6::new(
@@ -127,7 +159,22 @@ pub async fn udp_bitransfer(
                 //     "=====================udp_bitransfer: {:?}========================",
                 //     &addr
                 // );
-                outbound.send_to(&frame.payload, &addr).await?;
+                // outbound.send_to(&frame.payload, &addr).await?;
+                match outbound.send_to(&frame.payload, &addr).await{
+                    Ok(n) =>{
+                        if n == 0{
+                            tls_socket.clone().close().await?;
+                            break
+                        }
+                        upload += n
+                    },
+                    Err(e) => {
+                        tls_socket.clone().close().await?;
+                        error!("udp send to upstream error: {:?}",e);
+                        break
+
+                    }
+                }
                 // debug!(
                 //     "=====================udp_bitransfer sent: {:?}========================",
                 //     upload
@@ -160,7 +207,21 @@ pub async fn udp_bitransfer(
                     buf2.extend_from_slice(&buf1[..n]);
                     while let Some(frame) = UdpAssociateDecoder.decode_eof(&mut buf2)? {
                         let addr = try_resolve(resolver.clone(), &frame.addr).await?;
-                        upload += outbound.send_to(&frame.payload, addr).await?;
+                        // upload += outbound.send_to(&frame.payload, addr).await?;
+                         match outbound.send_to(&frame.payload, addr).await{
+                            Ok(n) =>{
+                                if n == 0{
+                                    tls_socket.clone().close().await?;
+                                }
+                                upload += n
+                            },
+                             Err(e) => {
+                                 tls_socket.clone().close().await?;
+                                 error!("udp send to upstream error: {:?}",e);
+                                 break
+
+                             }
+                        }
                     }
                     break;
                 }
@@ -177,11 +238,11 @@ pub async fn udp_bitransfer(
         loop {
             let (len, dst) = outbound.recv_from(&mut buf).await?;
             if len == 0 {
-                // wi.close().await?;
+                tls_socket.clone().close().await?;
                 break;
             }
             let us: Vec<u8> = UdpAssociate::new(dst, &buf[..len]).into();
-            wi.write_all(&us).await?;
+            wi.write_all(&us).await?;//TODO close upstream udp socket
             download += us.len();
         }
         wi.flush().await?;

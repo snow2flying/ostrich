@@ -31,6 +31,7 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSoc
 use std::time::Duration;
 
 use crate::DNS_CHCAE_TIMEOUT;
+// use futures_lite::AsyncWriteExt;
 
 pub enum Mode {
     Server,
@@ -256,7 +257,7 @@ async fn proxy(
                 "trying to connect to target at: {} from source: {}",
                 target, source
             );
-
+            let mut tls_socket = tls_stream.io.clone();
             // let (upload, download) =
             if header.udp_associate {
                 let (read_half, write_half) = tls_stream.split();
@@ -279,7 +280,7 @@ async fn proxy(
                     }
                 };
                 if let Some(write_half) = cached {
-                    udp_bitransfer(source, read_half, write_half, buf, resolver.clone()).await?
+                    udp_bitransfer(source, read_half, write_half, buf, resolver.clone(),tls_socket).await?
                 } else {
                     let upload = udp_transfer_to_upstream(
                         read_half,
@@ -287,6 +288,7 @@ async fn proxy(
                         udp_socket,
                         buf,
                         resolver.clone(),
+                        tls_socket
                     )
                     .await;
                     let mut guard = udp_pairs.lock().await;
@@ -316,7 +318,7 @@ async fn proxy(
                     tcp_stream.write_all(buf.as_ref()).await.unwrap();
                 }
 
-                let (mut target_stream, mut target_sink) = tcp_stream.split();
+                let (mut target_stream, mut target_sink) = tcp_stream.clone().split();
                 let (mut from_tls_stream, mut from_tls_sink) = tls_stream.split();
 
                 let s_t = format!("{}->{}", source, target);
@@ -388,10 +390,12 @@ async fn proxy(
                 match res {
                     Either::Left((Err(e), _)) => {
                         debug!("tcp copy to remote closed");
+                        tls_socket.close().await?;
                         Err(anyhow::anyhow!("====================tcp copy local to remote error: {:?}=================",e))?
                     }
                     Either::Right((Err(e), _)) => {
                         debug!("tcp copy to local closed");
+                        tcp_stream.close().await?;
                         Err(anyhow::anyhow!("====================tcp copy remote to local error: {:?}==================",e))?
                     }
                     Either::Left((Ok(_), _)) | Either::Right((Ok(_), _)) => (),
