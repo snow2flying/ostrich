@@ -20,8 +20,8 @@ use service::db::model::{EntityId, ProvideAuthn};
 use service::register::handler::{ResponseBody, ResponseEntity, Role};
 use sqlx::pool::PoolConnection;
 use sqlx::Sqlite;
-pub const DNS_CHCAE_TIMEOUT: u64 = 3 * 60;
-
+pub const DNS_CACHE_TIMEOUT: u64 = 3 * 60;
+// pub const DEFAULT_BUFFER_SIZE: usize = 2 * 4096;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Address {
     pub ip: String,
@@ -143,22 +143,22 @@ pub fn log_init(level: u8) -> Result<()> {
     let log_level = LogLevel { level };
     println!("log level: {:?}", log_level.to_string());
     std::env::set_var("RUST_LOG", log_level.to_string());
-    // env_logger::init();
-    let handle = Logger::try_with_env()
-        .unwrap()
-        .format(detailed_format)
-        .log_to_file(FileSpec::default().use_timestamp(true).directory("./logs"))
-        .write_mode(WriteMode::BufferAndFlushWith(
-            10 * 1024,
-            std::time::Duration::from_millis(600),
-        ))
-        .rotate(
-            Criterion::Age(Age::Hour),
-            Naming::Timestamps,
-            Cleanup::KeepLogFiles(3),
-        )
-        .start()
-        .unwrap_or_else(|e| panic!("Logger initialization failed with {:?}", e));
+    env_logger::init();
+    // let handle = Logger::try_with_env()
+    //     .unwrap()
+    //     .format(detailed_format)
+    //     .log_to_file(FileSpec::default().use_timestamp(true).directory("./logs"))
+    //     .write_mode(WriteMode::BufferAndFlushWith(
+    //         10 * 1024,
+    //         std::time::Duration::from_millis(600),
+    //     ))
+    //     .rotate(
+    //         Criterion::Age(Age::Day),
+    //         Naming::Timestamps,
+    //         Cleanup::KeepLogFiles(3),
+    //     )
+    //     .start()
+    //     .unwrap_or_else(|e| panic!("Logger initialization failed with {:?}", e));
     Ok(())
 }
 // one possible implementation of walking a directory only visiting files

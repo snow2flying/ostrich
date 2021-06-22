@@ -40,7 +40,7 @@ impl TlsAcceptor {
     }
 
     // Currently private, as exposing ServerSessions exposes rusttls
-    fn accept_with<IO, F>(&self, stream: IO, f: F) -> Accept<IO>
+    pub fn accept_with<IO, F>(&self, stream: IO, f: F) -> Accept<IO>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
         F: FnOnce(&mut ServerSession),

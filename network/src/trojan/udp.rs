@@ -13,7 +13,7 @@ use futures::future::Either;
 use futures::io::{ReadHalf, WriteHalf};
 use futures::FutureExt;
 use futures::{AsyncReadExt, AsyncWriteExt};
-use log::{debug, info,error};
+use log::{debug, error, info};
 use std::collections::HashMap;
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::Arc;
@@ -26,7 +26,7 @@ pub async fn udp_transfer_to_upstream(
     outbound: Arc<UdpSocket>,
     mut buf: BytesMut,
     resolver: Arc<Resolver>,
-    mut tls_socket: TcpStream
+    mut tls_socket: TcpStream,
 ) -> Result<u64> {
     let mut upload = 0;
     'upstream: loop {
@@ -37,24 +37,23 @@ pub async fn udp_transfer_to_upstream(
                 &frame.addr
             );
             // upload += outbound.send_to(&frame.payload, addr).await?;
-            match outbound.send_to(&frame.payload, addr).await{
-                Ok(n) =>{
-                    if n == 0{
+            match outbound.send_to(&frame.payload, addr).await {
+                Ok(n) => {
+                    if n == 0 {
                         tls_socket.close().await?;
                         break 'upstream;
                     }
                     upload += n
-                },
+                }
                 Err(e) => {
                     tls_socket.close().await?;
-                    error!("udp send to upstream error: {:?}",e);
+                    error!("udp send to upstream error: {:?}", e);
                     break 'upstream;
-
                 }
             }
         }
 
-        let mut buf1 = vec![0u8; 65536];
+        let mut buf1 = vec![0u8; 1024];
         // let n = inbound.read(&mut buf1).await?;
         // let n = timeout(Duration::from_secs(60), inbound.read(&mut buf1)).await.unwrap().unwrap();
         // debug!("=====================udp_transfer_to_upstream: {:?}========================",n);
@@ -80,19 +79,18 @@ pub async fn udp_transfer_to_upstream(
                 while let Some(frame) = UdpAssociateDecoder.decode_eof(&mut buf2)? {
                     let addr = try_resolve(resolver.clone(), &frame.addr).await?;
                     // upload += outbound.send_to(&frame.payload, addr).await?;
-                    match outbound.send_to(&frame.payload, addr).await{
-                        Ok(n) =>{
-                            if n == 0{
+                    match outbound.send_to(&frame.payload, addr).await {
+                        Ok(n) => {
+                            if n == 0 {
                                 tls_socket.close().await?;
                                 break 'upstream;
                             }
                             upload += n
-                        },
+                        }
                         Err(e) => {
                             tls_socket.close().await?;
-                            error!("udp send to upstream error: {:?}",e);
+                            error!("udp send to upstream error: {:?}", e);
                             break 'upstream;
-
                         }
                     }
                 }
@@ -110,7 +108,7 @@ pub async fn udp_transfer_to_downstream(
     udp_socket: Arc<UdpSocket>,
     udp_pairs: Arc<Mutex<HashMap<SocketAddrV6, (WriteHalf<TlsStream<TcpStream>>, u64)>>>,
 ) -> Result<()> {
-    let mut buf = vec![0u8; 65536];
+    let mut buf = vec![0u8; 1024];
     loop {
         let (len, dst) = udp_socket.recv_from(&mut buf).await?;
         let us: Vec<u8> = UdpAssociate::new(dst, &buf[..len]).into();
@@ -160,19 +158,18 @@ pub async fn udp_bitransfer(
                 //     &addr
                 // );
                 // outbound.send_to(&frame.payload, &addr).await?;
-                match outbound.send_to(&frame.payload, &addr).await{
-                    Ok(n) =>{
-                        if n == 0{
+                match outbound.send_to(&frame.payload, &addr).await {
+                    Ok(n) => {
+                        if n == 0 {
                             tls_socket.clone().close().await?;
-                            break
+                            break;
                         }
                         upload += n
-                    },
+                    }
                     Err(e) => {
                         tls_socket.clone().close().await?;
-                        error!("udp send to upstream error: {:?}",e);
-                        break
-
+                        error!("udp send to upstream error: {:?}", e);
+                        break;
                     }
                 }
                 // debug!(
@@ -181,7 +178,7 @@ pub async fn udp_bitransfer(
                 // );
             }
 
-            let mut buf1 = vec![0u8; 65536];
+            let mut buf1 = vec![0u8; 1024];
 
             // let n = ri.read(&mut buf1).await?;
             // let n = timeout(Duration::from_secs(60), ri.read(&mut buf1)).await.unwrap().unwrap();
@@ -208,19 +205,18 @@ pub async fn udp_bitransfer(
                     while let Some(frame) = UdpAssociateDecoder.decode_eof(&mut buf2)? {
                         let addr = try_resolve(resolver.clone(), &frame.addr).await?;
                         // upload += outbound.send_to(&frame.payload, addr).await?;
-                         match outbound.send_to(&frame.payload, addr).await{
-                            Ok(n) =>{
-                                if n == 0{
+                        match outbound.send_to(&frame.payload, addr).await {
+                            Ok(n) => {
+                                if n == 0 {
                                     tls_socket.clone().close().await?;
                                 }
                                 upload += n
-                            },
-                             Err(e) => {
-                                 tls_socket.clone().close().await?;
-                                 error!("udp send to upstream error: {:?}",e);
-                                 break
-
-                             }
+                            }
+                            Err(e) => {
+                                tls_socket.clone().close().await?;
+                                error!("udp send to upstream error: {:?}", e);
+                                break;
+                            }
                         }
                     }
                     break;
@@ -234,7 +230,7 @@ pub async fn udp_bitransfer(
     })
     .fuse();
     let server_to_client = Box::pin(async {
-        let mut buf = vec![0u8; 65536];
+        let mut buf = vec![0u8; 1024];
         loop {
             let (len, dst) = outbound.recv_from(&mut buf).await?;
             if len == 0 {
@@ -242,7 +238,7 @@ pub async fn udp_bitransfer(
                 break;
             }
             let us: Vec<u8> = UdpAssociate::new(dst, &buf[..len]).into();
-            wi.write_all(&us).await?;//TODO close upstream udp socket
+            wi.write_all(&us).await?; //TODO close upstream udp socket
             download += us.len();
         }
         wi.flush().await?;

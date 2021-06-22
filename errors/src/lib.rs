@@ -41,6 +41,8 @@ pub enum Error {
     #[error("hyper errors")]
     HyperBodyError(#[from] hyper::http::Error),
 
+    #[error("future timeout")]
+    TimeoutError(#[from] async_std::future::TimeoutError),
     #[error("Error: {0:?}")]
     Eor(#[from] anyhow::Error),
 }

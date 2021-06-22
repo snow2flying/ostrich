@@ -11,10 +11,8 @@ use async_tls::TlsAcceptor;
 
 use crate::authenticator::{Authenticator, NullAuthenticator};
 use anyhow::anyhow;
-use async_std::future::timeout;
 use async_std::net::UdpSocket;
 use async_std::sync::Mutex;
-use async_std::task::spawn;
 use async_std_resolver::{config, resolver};
 use errors::{Error, Result};
 use futures::future::Either;
@@ -24,19 +22,20 @@ use glommio::{Local, Task};
 use lru_time_cache::LruCache;
 use network::trojan::header::{Decoder, TrojanDecoder};
 use network::trojan::resolver::Resolver;
-use network::trojan::udp::{
-    to_ipv6_address, udp_bitransfer, udp_transfer_to_downstream, udp_transfer_to_upstream,
-};
+use network::trojan::udp::{to_ipv6_address, udp_bitransfer, udp_transfer_to_upstream};
 use network::{bad_request, try_resolve};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::time::Duration;
+
+
+
+
+use crate::DNS_CHCAE_TIMEOUT;
 // use futures_lite::io::copy;
 use futures_util::io::copy;
-use network::trojan::DEFAULT_BUFFER_SIZE;
-use rustls::Session;
 // use futures_lite::AsyncWriteExt;
 
 pub enum Mode {
@@ -141,13 +140,7 @@ impl ProxyBuilder {
         };
         let sk = Socket::new(domain, Type::stream(), Some(Protocol::tcp()))?;
         let addr = socket2::SockAddr::from(addr);
-        // sk.set_reuse_port(true)?;
-
-        sk.set_nonblocking(true)?;
-        sk.set_read_timeout(Some(Duration::from_secs(60)))?;
-        sk.set_write_timeout(Some(Duration::from_secs(60)))?;
-        sk.set_linger(Some(Duration::from_secs(10)))?;
-
+        sk.set_reuse_port(true)?;
         sk.bind(&addr)?;
         // sk.listen(1024)?;
         // sk.listen(4096)?;
@@ -169,44 +162,21 @@ impl ProxyBuilder {
             )))
             .await?,
         );
-
-        let udp_transfer_to_downstream_fut =
-            udp_transfer_to_downstream(udp_socket.clone(), udp_pairs.clone());
-        // spawn(async {
-        //     udp_transfer_to_downstream_fut.await.unwrap();
-        //     std::process::exit(1);
-        // });
-        Local::local(async {
-            udp_transfer_to_downstream_fut.await;
-            std::process::exit(1);
-        }).detach();
-
-
-        let resolver = self.resolver.clone();
-        let acceptor = self.acceptor.clone();
-
         while let Some(incoming_stream) = listener.incoming().next().await {
             match incoming_stream {
                 Err(_) => continue,
                 Ok(stream) => {
-                    // // let target = self.target.clone();
-                    let udp_socket = udp_socket.clone();
-                    let udp_pairs = udp_pairs.clone();
-                    let acceptor = acceptor.clone();
-                    let resolver = resolver.clone();
-                    // spawn(process_stream(
-                    Local::local(async  move {
-                        process_stream(
+                    let acceptor = self.acceptor.clone();
+                    // let target = self.target.clone();
+                    Task::local(process_stream(
                         acceptor,
                         stream,
                         // target,
                         // shared_authenticator.clone(),
-                        udp_pairs,
-                        udp_socket,
-                        resolver,
-                    // ));
-                    ).await;
-                    })
+                        udp_pairs.clone(),
+                        udp_socket.clone(),
+                        self.resolver.clone(),
+                    ))
                     .detach();
                     // Ok(())
                 }
@@ -225,7 +195,7 @@ async fn process_stream(
     udp_pairs: Arc<Mutex<HashMap<SocketAddrV6, (WriteHalf<TlsStream<TcpStream>>, u64)>>>,
     udp_socket: Arc<UdpSocket>,
     resolver: Arc<Resolver>,
-) -> Result<()>{
+) {
     let source = raw_stream
         .peer_addr()
         .map(|addr| addr.to_string())
@@ -233,14 +203,7 @@ async fn process_stream(
 
     debug!("new connection from {}", source);
 
-    // let handshake = acceptor.accept(raw_stream).await;
-    let handshake = timeout(
-        Duration::from_secs(5),
-        acceptor.accept_with(raw_stream, |s| {
-            s.set_buffer_limit(DEFAULT_BUFFER_SIZE);
-        }),
-    )
-    .await?;
+    let handshake = acceptor.accept(raw_stream).await;
 
     match handshake {
         Ok(inner_stream) => {
@@ -257,14 +220,9 @@ async fn process_stream(
             .await
             {
                 error!("errors processing tls: {:?} from source: {}", err, source);
-                return Err(Error::Eor(anyhow::anyhow!("{:?}", err)));
             }
-            Ok(())
         }
-        Err(err) => {
-            error!("errors handshaking: {:?} from source: {}", err, source);
-            Err(Error::Eor(anyhow::anyhow!("{:?}", err)))
-        }
+        Err(err) => error!("errors handshaking: {:?} from source: {}", err, source),
     }
 }
 
@@ -283,10 +241,7 @@ async fn proxy(
     // use network::MaybeSocketAddr;
     let mut buf1 = vec![0u8; 1024];
     // let mut buf = BytesMut::new();
-    // let n = tls_stream.read(&mut buf1).await?;
-
-    let n = timeout(Duration::from_secs(5), tls_stream.read(&mut buf1)).await??;
-
+    let n = tls_stream.read(&mut buf1).await?;
     info!("stream.read {:?} bytes", n);
     let mut buf = BytesMut::with_capacity(n);
     buf.extend_from_slice(&buf1[..n]);
@@ -332,15 +287,7 @@ async fn proxy(
                     }
                 };
                 if let Some(write_half) = cached {
-                    udp_bitransfer(
-                        source,
-                        read_half,
-                        write_half,
-                        buf,
-                        resolver.clone(),
-                        tls_socket,
-                    )
-                    .await?
+                    udp_bitransfer(source, read_half, write_half, buf, resolver.clone(),tls_socket).await?
                 } else {
                     let upload = udp_transfer_to_upstream(
                         read_half,
@@ -348,7 +295,7 @@ async fn proxy(
                         udp_socket,
                         buf,
                         resolver.clone(),
-                        tls_socket,
+                        tls_socket
                     )
                     .await;
                     let mut guard = udp_pairs.lock().await;
@@ -420,8 +367,9 @@ async fn proxy(
 
                 let source_to_target_ft = async move {
                     // match copy(&mut from_tls_stream, &mut target_sink, s_t.clone()).await {
-                    match copy(&mut from_tls_stream, &mut target_sink).await {
-                        Ok(len) => {
+                        match copy(&mut from_tls_stream, &mut target_sink).await {
+
+                            Ok(len) => {
                             debug!("total {} bytes copied from source to target: {}", len, s_t);
                             Ok(())
                         }
@@ -434,7 +382,7 @@ async fn proxy(
 
                 let target_to_source_ft = async move {
                     // match copy(&mut target_stream, &mut from_tls_sink, t_s.clone()).await {
-                    match copy(&mut target_stream, &mut from_tls_sink).await {
+                        match copy(&mut target_stream, &mut from_tls_sink).await {
                         Ok(len) => {
                             debug!("total {:?} bytes copied from target: {}", len, t_s);
                             Ok(())
