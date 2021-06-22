@@ -178,8 +178,8 @@ impl ProxyBuilder {
         Local::local(async {
             udp_transfer_to_downstream_fut.await;
             std::process::exit(1);
-        }).detach();
-
+        })
+        .detach();
 
         let resolver = self.resolver.clone();
         let acceptor = self.acceptor.clone();
@@ -194,17 +194,15 @@ impl ProxyBuilder {
                     let acceptor = acceptor.clone();
                     let resolver = resolver.clone();
                     // spawn(process_stream(
-                    Local::local(async  move {
+                    Local::local(async move {
                         process_stream(
-                        acceptor,
-                        stream,
-                        // target,
-                        // shared_authenticator.clone(),
-                        udp_pairs,
-                        udp_socket,
-                        resolver,
-                    // ));
-                    ).await;
+                            acceptor, stream,
+                            // target,
+                            // shared_authenticator.clone(),
+                            udp_pairs, udp_socket, resolver,
+                            // ));
+                        )
+                        .await;
                     })
                     .detach();
                     // Ok(())
@@ -224,7 +222,7 @@ async fn process_stream(
     udp_pairs: Arc<Mutex<HashMap<SocketAddrV6, (WriteHalf<TlsStream<TcpStream>>, u64)>>>,
     udp_socket: Arc<UdpSocket>,
     resolver: Arc<Resolver>,
-) -> Result<()>{
+) -> Result<()> {
     let source = raw_stream
         .peer_addr()
         .map(|addr| addr.to_string())

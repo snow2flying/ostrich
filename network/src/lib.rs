@@ -49,7 +49,7 @@ pub async fn try_resolve(resolver: Arc<Resolver>, addr: &MaybeSocketAddr) -> Res
             let mut cache = resolver.cache.lock().await;
             match cache.get(host) {
                 Some(addr) => {
-                    info!("dns cache matched host: {:?}", host);
+                    info!("dns cache matched host: {:?}:{:?}", host,addr);
                     let ret = addr.clone();
                     drop(cache);
                     Ok(ret)
