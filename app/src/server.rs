@@ -307,7 +307,7 @@ fn main() -> Result<()> {
                 let report_task = Local::local(async move {
                     loop {
                         // Timer::new(Duration::from_secs(10)).await;
-                        async_std::task::sleep(Duration::from_secs(10)).await;
+                        async_std::task::sleep(Duration::from_secs(3*60)).await;
 
                         // std::thread::sleep(Duration::from_secs(5));
 

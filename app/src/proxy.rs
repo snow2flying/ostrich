@@ -141,8 +141,7 @@ impl ProxyBuilder {
         };
         let sk = Socket::new(domain, Type::stream(), Some(Protocol::tcp()))?;
         let addr = socket2::SockAddr::from(addr);
-        // sk.set_reuse_port(true)?;
-
+        sk.set_reuse_port(true)?;
         sk.set_nonblocking(true)?;
         sk.set_read_timeout(Some(Duration::from_secs(60)))?;
         sk.set_write_timeout(Some(Duration::from_secs(60)))?;
