@@ -62,7 +62,7 @@ default= ["sqlite"]
 sqlite = ["sqlx/sqlite","sqlx/runtime-async-std-rustls"]
 
 [[bin]]
-name = "server"
+name = "ostrich_node"
 path = "./src/server.rs"
 [[bin]]
 name ="ostrich_cli"

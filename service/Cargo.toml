@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 #rusqlite = {version = "0.25.1",features = ["bundled"]}
 sqlx = { version = "0.5" }
-async-std = "1"
+async-std = "1.9.0"
 hyper = { version = "0.13.9", default-features = false }
 tokio = { version = "0.2.23", default-features = false }
 glommio = {version = "0.4.1" }

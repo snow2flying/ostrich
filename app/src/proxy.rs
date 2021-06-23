@@ -20,7 +20,7 @@ use errors::{Error, Result};
 use futures::future::Either;
 use futures::future::{self, AbortHandle};
 use futures_util::AsyncWriteExt;
-use glommio::{Local, Task};
+// use glommio::{Local, Task};
 use lru_time_cache::LruCache;
 use network::trojan::header::{Decoder, TrojanDecoder};
 use network::trojan::resolver::Resolver;
@@ -171,44 +171,72 @@ impl ProxyBuilder {
 
         let udp_transfer_to_downstream_fut =
             udp_transfer_to_downstream(udp_socket.clone(), udp_pairs.clone());
-        // spawn(async {
-        //     udp_transfer_to_downstream_fut.await.unwrap();
-        //     std::process::exit(1);
-        // });
-        Local::local(async {
-            udp_transfer_to_downstream_fut.await;
+        spawn(async {
+            udp_transfer_to_downstream_fut.await.unwrap();
             std::process::exit(1);
-        })
-        .detach();
-
-        let resolver = self.resolver.clone();
-        let acceptor = self.acceptor.clone();
+        });
 
         while let Some(incoming_stream) = listener.incoming().next().await {
             match incoming_stream {
                 Err(_) => continue,
                 Ok(stream) => {
                     // // let target = self.target.clone();
-                    let udp_socket = udp_socket.clone();
-                    let udp_pairs = udp_pairs.clone();
-                    let acceptor = acceptor.clone();
-                    let resolver = resolver.clone();
-                    // spawn(process_stream(
-                    Local::local(async move {
-                        process_stream(
-                            acceptor, stream,
+                    // let udp_socket = udp_socket.clone();
+                    // let udp_pairs = udp_pairs.clone();
+                    // let acceptor = acceptor.clone();
+                    // let resolver = resolver.clone();
+                    spawn(process_stream(
+                    // Local::local(async move {
+                    //     process_stream(
+                            self.acceptor.clone(), stream,
                             // target,
                             // shared_authenticator.clone(),
-                            udp_pairs, udp_socket, resolver,
+                            udp_pairs.clone(), udp_socket.clone(), self.resolver.clone(),
                             // ));
                         )
-                        .await;
-                    })
-                    .detach();
+                            // .await;
+                    );
                     // Ok(())
                 }
             }
         }
+
+
+
+        // Local::local(async {
+        //     udp_transfer_to_downstream_fut.await;
+        //     std::process::exit(1);
+        // })
+        // .detach();
+
+        // let resolver = self.resolver.clone();
+        // let acceptor = self.acceptor.clone();
+
+        // while let Some(incoming_stream) = listener.incoming().next().await {
+        //     match incoming_stream {
+        //         Err(_) => continue,
+        //         Ok(stream) => {
+        //             // // let target = self.target.clone();
+        //             let udp_socket = udp_socket.clone();
+        //             let udp_pairs = udp_pairs.clone();
+        //             let acceptor = acceptor.clone();
+        //             let resolver = resolver.clone();
+        //             // spawn(process_stream(
+        //             Local::local(async move {
+        //                 process_stream(
+        //                     acceptor, stream,
+        //                     // target,
+        //                     // shared_authenticator.clone(),
+        //                     udp_pairs, udp_socket, resolver,
+        //                     // ));
+        //                 )
+        //                 .await;
+        //             })
+        //             .detach();
+        //             // Ok(())
+        //         }
+        //     }
+        // }
         Ok(())
     }
 }
@@ -282,7 +310,11 @@ async fn proxy(
     // let mut buf = BytesMut::new();
     // let n = tls_stream.read(&mut buf1).await?;
 
+    // let mut test = BytesMut::with_capacity(1024);
+
     let n = timeout(Duration::from_secs(5), tls_stream.read(&mut buf1)).await??;
+
+    // panic!("tset");
 
     info!("stream.read {:?} bytes", n);
     let mut buf = BytesMut::with_capacity(n);

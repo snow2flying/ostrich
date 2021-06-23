@@ -69,10 +69,10 @@ pub async fn udp_transfer_to_upstream(
 
         if let Ok(r) = timeout(Duration::from_secs(60), inbound.read(&mut buf1)).await {
             let n = r?;
-            // debug!(
-            //     "=====================udp_transfer_to_upstream: {:?}========================",
-            //     n
-            // );
+            debug!(
+                "=====================udp_transfer_to_upstream: {:?}========================",
+                n
+            );
             if n == 0 {
                 let mut buf2 = BytesMut::with_capacity(n);
                 buf2.extend_from_slice(&buf1[..n]);
